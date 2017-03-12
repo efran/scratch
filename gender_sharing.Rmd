@@ -1,0 +1,613 @@
+---
+output:
+  word_document: default
+  pdf_document: default
+  html_document: default
+---
+## Project Outline: 
+### An Exploration of Gender Differences in Sharing Behavior on Scratch
+#### Emilia Gan -- COM 521, Winter 2017 
+  
+### Rationale
+* Women are underrepresented in computer science and other computational fields.
+* Previous research has suggested that boys and girls interact with the Scratch programming language and the online Scratch community in different ways.
+* Scratch is the first experience with programming for many, if not most, children. The attitudes towards programming formed by children using the Scratch online programming platform thus likely affect future decisions such as whether to study computational fields or to pursue careers in tech.
+* Our study will examine the differences in project sharing behavior between girls and boys using the Scratch platform. In particular, we will investigate whether there are differences in the sharing patterns of male versus female users and look into whether differences exist in the peer feedback received by projects based on the gender of the project creator.
+
+### Objectives
+
+#### General Objective
+To examine whether peer recognition of shared projects affects future project sharing behavior by the same Scratcher.
+
+#### Specific Objectives
+* To determine whether there are differences in the pattern of Scratch project creation and sharing between male and female users of the Scratch online programming platform. 
+* To determine if there is a difference in the frequency of receiving peer feedback between projects created by female users and projects created by male users.
+* To determine if receiving peer feedback affects the future sharing behavior of the project creator.
+
+### Null Hypotheses
+* Projects created by females are just as likely to be shared as projects created by males.
+* Projects created by females are just as likely to receive peer recognition as projects created by males.
+* Scratchers whose shared projects receive no peer recognition are just as likely to share future projects as are Scratchers whose earlier shared projects did receive peer recognition.
+* Female Scratchers whose shared projects receive no peer recognition are just as likely to share future projects as are male Scratchers whose shared projects receive no peer recognition.
+
+### Conceptual Diagram
+
+![Conceptual Diagram for Factors Influencing Project Sharing.](/Users/emiliagan/Documents/ScratchProject/Conceptual_Diagram.PNG)
+
+### Dummy Tables
+
+### Taking a Sample from the Scratch Data Set
+
+### Looking for Gender Differences in Project Sharing
+  
+The SQL code below was used to sample the Scratch Database. Setting the random seed to 11 and selecting for values < 0.1, ~871K users were randomly selected for the data set. These users created over 4.86 million projects.
+
+![SQL code used to generate the sample data set.](SQL3.png)
+
+Before starting any analysis, an examination of the data gives the following information:
+
+```{r loadData, echo=FALSE}
+library(knitr)
+library(xtable)
+info_data <- read.csv("egFirstShared_sample3.csv")
+info_data$gender[info_data$gender=="Female"] <- "female"
+info_data$gender[info_data$gender=="FEMALE"] <- "female"
+info_data$gender[info_data$gender=="female "] <- "female"
+info_data$gender[info_data$gender=="Male"] <- "male"
+info_data$gender[info_data$gender=="mâle"] <- "male"
+
+gender.table <- table(droplevels(info_data$gender))
+
+female.projects <- info_data[info_data$gender == "female",]
+male.projects <- info_data[info_data$gender == "male",]
+g.table <- as.table(matrix(c(length(female.projects$id), length(male.projects$id)), ncol = 1, byrow=TRUE))
+
+colnames(g.table) <- c("Projects")
+rownames(g.table) <- c("Female ","Male ")
+
+kable(g.table, main = "Projects Divided by Gender of Creator")
+```
+Table 1: Project Count by Gender of Creator
+
+In exploring the data, the goal is to get a sense of factors that might influence a Scratcher in deciding whether or not to share created projects. Accordingly, I want to get a sense of the distributions of features of shared projects, such as the number of views, the number of Loveits, and the number of favorites.
+
+Looking first at histograms of view counts for both the female and the male subsets in the data:
+
+```{r histogramFemale, echo=FALSE}
+info_female <- info_data[info_data$gender == "female",]
+info_female$view_count_mod <- info_female$view_count
+info_female$view_count_mod[info_female$view_count_mod >= 50] <- 50
+hist(info_female$view_count_mod, breaks = 20, main = "Histogram of View Counts for Projects Created by Females", xlab="View Count - Projects (Female)")
+```
+```{r histogramMale, echo=FALSE}
+info_male <- info_data[info_data$gender == "male",]
+info_male$view_count_mod <- info_male$view_count
+info_male$view_count_mod[info_male$view_count_mod >= 50] <- 50
+hist(info_male$view_count_mod, breaks = 20, main = "Histogram of View Counts for Projects Created by Males",xlab="View Count - Projects (Male)")
+```
+
+What this shows us is that most projects get very few views. It is hard to compare the raw numbers, so I thought looking at proportions would be more useful:
+  
+```{r proportionFemale, echo=FALSE}
+view_count_table_female <- table(info_female$view_count_mod)
+views_female <- as.data.frame(view_count_table_female)
+proportions_views_f <- sapply(views_female$Freq, function(x,y=views_female$Freq) x/sum(y))
+views_female$proportion <- c(proportions_views_f)
+
+plot(views_female$proportion, cex = .3, col = "red", xlab= "Number of Views", ylab="Proportion of Projects")
+```
+```{r proportionMale, echo=FALSE}
+view_count_table_male <- table(info_male$view_count_mod)
+views_male <- as.data.frame(view_count_table_male)
+proportions_views_m <- sapply(views_male$Freq, function(x,y=views_male$Freq) x/sum(y))
+views_male$proportion <- c(proportions_views_m)
+
+plot(views_male$proportion, cex = .3, col = "red", xlab= "Number of Views", ylab="Proportion of Projects")
+```
+Proportion of Project Receiving a Given Number of Views
+
+After looking at some features of the entire sample, the data set was processed to add an additional feature, "prev.projects." This feature makes data on how many projects had been created prior to any given project easy to access, allowing the creation of subsets such as "first.project", "second.project", etc.
+ 
+```{r codeFirstFifth, echo=FALSE}
+# The following code was used to obtain data on first through fifth projects. 
+# These smaller data sets are all subsets of the sample data set.
+
+info_data$shared <- !is.na(info_data$datetime_first_shared)
+info_data$female <- info_data$gender == "female"
+
+tmp <- data.frame(prev.projects=unlist(tapply(info_data$id, info_data$id, function (x) {seq(0, length(x)-1)})),
+                  id=unlist(tapply(info_data$id, info_data$id, function (x) {x})))
+
+# ensure that these are in the same order and then add the column on
+info_data <- info_data[order(info_data$id, info_data$datetime_first_shared),]
+tmp <- tmp[order(tmp$id, tmp$prev.projects),]
+info_data$prev.projects <- tmp$prev.projects
+```
+
+
+```{r, subsettingProjects, echo=FALSE}
+info_data$datetime_first_shared[info_data$datetime_first_shared=="NULL"] <- NA
+first_project <- info_data[info_data$prev.projects<1,]
+second_project <- info_data[info_data$prev.projects==1,]
+third_project <- info_data[info_data$prev.projects==2,]
+fourth_project <- info_data[info_data$prev.projects==3,]
+fifth_project <- info_data[info_data$prev.projects==4,]
+```
+We can now look at sharing based on project number and run analyses to look at the effect that reactions to earlier projects has on sharing of later projects.
+  
+```{r splittingOnSharedStatus, echo=FALSE}
+# Separate each file into "shared" and "unshared" projects.
+# Generate vectors with number of 1st --> 5th projects for each category,
+# along with a vector of the total number of projects for each of 1st --> 5th:
+
+first_shared_vector <- !is.na(first_project$datetime_first_shared)
+shared1 <- sum(first_shared_vector)
+
+first_not_shared_vector <- is.na(first_project$datetime_first_shared)
+notshared1 <- sum(first_not_shared_vector)
+
+second_shared_vector <- !is.na(second_project$datetime_first_shared)
+shared2 <- sum(second_shared_vector)
+
+second_not_shared_vector <- is.na(second_project$datetime_first_shared)
+notshared2 <- sum(second_not_shared_vector)
+
+third_shared_vector <- !is.na(third_project$datetime_first_shared)
+shared3 <- sum(third_shared_vector)
+
+third_not_shared_vector <- is.na(third_project$datetime_first_shared)
+notshared3 <- sum(third_not_shared_vector)
+
+fourth_shared_vector <- !is.na(fourth_project$datetime_first_shared)
+shared4 <- sum(fourth_shared_vector)
+
+fourth_not_shared_vector <- is.na(fourth_project$datetime_first_shared)
+notshared4 <- sum(fourth_not_shared_vector)
+
+fifth_shared_vector <- !is.na(fifth_project$datetime_first_shared)
+shared5 <- sum(fifth_shared_vector)
+
+fifth_not_shared_vector <- is.na(fifth_project$datetime_first_shared)
+notshared5 <- sum(fifth_not_shared_vector)
+
+num_shared_1to5 <- c(shared1, shared2, shared3, shared4, shared5)
+#num_shared_1to5
+
+num_not_shared_1to5 <- c(notshared1, notshared2, notshared3, notshared4, notshared5)
+#num_not_shared_1to5
+
+num_total_projects <- c(shared1+notshared1, shared2+notshared2, shared3+notshared3, shared4+notshared4, shared5+notshared5)
+#num_total_projects
+
+projects.table <- as.table(matrix(c(num_shared_1to5, num_not_shared_1to5, num_total_projects), ncol = 5, byrow=TRUE))
+
+colnames(projects.table) <- c("1st", "2nd", "3rd", "4th","5th")
+rownames(projects.table) <- c("Shared ","Unshared ", "Total ")
+
+kable(projects.table, main = "Projects 1 - 5 and their Shared Status")
+
+```
+
+Table 2: Proportion of Shared Projects (Project Number 1 through Project Number 5)
+
+Doing a proportions test lets us determine if these groups are all consistently represented in the subgroup. 
+
+```{r PropTestFirstFiveProjects, echo=FALSE}
+prop.test(num_shared_1to5, num_total_projects)
+proportions_project_number <- num_shared_1to5/num_total_projects
+#proportions_project_number
+```
+The following bar plot shows the proportions shared for each of 1st through 5th projects.
+```{r BarPlotFirstFiveProjects, echo=FALSE}
+barplot(proportions_project_number, names.arg = c("1st", "2nd", "3rd","4th","5th"), main="First through Fifth Projects: Proportions Shared", 
+        xlab= "Project Number", ylab= "Proportion")
+
+```
+
+### Looking for Gender Differences in Project Sharing
+
+There appears to be a decreasing trend in proportion of projects shared as the number of projects created increases. Next, we'll look at the data when grouped according to the gender of the project creator.
+```{r ProjectNumberByGender, echo=FALSE}
+# First, generate vectors giving the number of projects shared for each project # number by gender.
+first_shared_vector_male <- first_project$gender == "male" & !is.na(first_project$datetime_first_shared)
+shared1_male <- sum(first_shared_vector_male)
+first_shared_vector_female <- first_project$gender == "female" & !is.na(first_project$datetime_first_shared)
+shared1_female <- sum(first_shared_vector_female)
+
+first_not_shared_vector_male <- is.na(first_project$datetime_first_shared) & first_project$gender == "male"
+notshared1_male <- sum(first_not_shared_vector_male)
+first_not_shared_vector_female <- is.na(first_project$datetime_first_shared) & first_project$gender == "female"
+notshared1_female <- sum(first_not_shared_vector_female)
+
+second_shared_vector_male <- !is.na(second_project$datetime_first_shared) & second_project$gender == "male"
+shared2_male <- sum(second_shared_vector_male)
+second_shared_vector_female <- !is.na(second_project$datetime_first_shared) & second_project$gender == "female"
+shared2_female <- sum(second_shared_vector_female)
+
+second_not_shared_vector_male <- is.na(second_project$datetime_first_shared) & second_project$gender == "male"
+notshared2_male <- sum(second_not_shared_vector_male)
+second_not_shared_vector_female <- is.na(second_project$datetime_first_shared) & second_project$gender == "female"
+notshared2_female <- sum(second_not_shared_vector_female)
+
+third_shared_vector_male <- !is.na(third_project$datetime_first_shared) & third_project$gender == "male"
+shared3_male <- sum(third_shared_vector_male)
+third_shared_vector_female <- !is.na(third_project$datetime_first_shared) & third_project$gender == "female"
+shared3_female <- sum(third_shared_vector_female)
+
+third_not_shared_vector_male <- is.na(third_project$datetime_first_shared) & third_project$gender == "male"
+notshared3_male <- sum(third_not_shared_vector_male)
+third_not_shared_vector_female <- is.na(third_project$datetime_first_shared) & third_project$gender == "female"
+notshared3_female <- sum(third_not_shared_vector_female)
+
+fourth_shared_vector_male <- !is.na(fourth_project$datetime_first_shared) & fourth_project$gender == "male"
+shared4_male <- sum(fourth_shared_vector_male)
+fourth_shared_vector_female <- !is.na(fourth_project$datetime_first_shared) & fourth_project$gender == "female"
+shared4_female <- sum(fourth_shared_vector_female)
+
+fourth_not_shared_vector_male <- is.na(fourth_project$datetime_first_shared) & fourth_project$gender == "male"
+notshared4_male <- sum(fourth_not_shared_vector_male)
+fourth_not_shared_vector_female <- is.na(fourth_project$datetime_first_shared) & fourth_project$gender == "female"
+notshared4_female <- sum(fourth_not_shared_vector_female)
+
+fifth_shared_vector_male <- !is.na(fifth_project$datetime_first_shared) & fifth_project$gender == "male"
+shared5_male <- sum(fifth_shared_vector_male)
+fifth_shared_vector_female <- !is.na(fifth_project$datetime_first_shared) & fifth_project$gender == "female"
+shared5_female <- sum(fifth_shared_vector_female)
+
+fifth_not_shared_vector_male <- is.na(fifth_project$datetime_first_shared) & fifth_project$gender == "male"
+notshared5_male <- sum(fifth_not_shared_vector_male)
+fifth_not_shared_vector_female <- is.na(fifth_project$datetime_first_shared) & fifth_project$gender == "female"
+notshared5_female <- sum(fifth_not_shared_vector_female)
+
+```
+
+Table 3: Proportion of Projects Shared, by Project Number and Gender
+  
+```{r = Projects1to5, echo=FALSE}
+female_shared_projects <- c(shared1_female, shared2_female, shared3_female, shared4_female, shared5_female)
+
+female_tot_projects <- c(shared1_female+notshared1_female, shared2_female+notshared2_female, 
+                         shared3_female+notshared3_female, shared4_female+notshared4_female, 
+                         shared5_female+notshared5_female)
+
+proportions_project_number_female <- female_shared_projects/female_tot_projects
+
+
+male_shared_projects <- c(shared1_male, shared2_male, shared3_male, shared4_male, shared5_male)
+
+male_tot_projects <- c(shared1_male+notshared1_male, shared2_male+notshared2_male, 
+                       shared3_male+notshared3_male, shared4_male+notshared4_male, 
+                       shared5_male+notshared5_male)
+
+proportions_project_number_male <- male_shared_projects/male_tot_projects
+
+proportions.table <- as.table(matrix(c(proportions_project_number, proportions_project_number_female, proportions_project_number_male),ncol=5,byrow=TRUE))
+colnames(proportions.table) <- c("1st","2nd","3rd", "4th", "5th")
+rownames(proportions.table) <- c("both","female","male")
+
+kable(proportions.table, caption = "Proprtions of Shared Projects")
+```
+
+And plot the proportions shared by females and males, for easy comparison:
+  
+```{r AdjacentMFBarPlots, echo=FALSE}
+counts <- as.table(matrix(c(proportions_project_number_female, proportions_project_number_male),ncol=5,byrow=TRUE))
+
+barplot(counts, names.arg = c("1st", "2nd", "3rd","4th","5th"), main="First through Fifth Projects: Proportions Shared", 
+        xlab= "Project Number", col = c("red", "darkblue"), legend.text = c("female", "male"), beside=TRUE, args.legend = list(x="bottomright"))
+
+```
+
+### What Are the Sharing Patterns for First Projects?
+
+Performing a test of equal or given proportions (prop.test) will test the null hypothesis that the proportions in each group are the same.
+
+```{r propTestSharedProjects, echo=FALSE}
+shared_projects <- info_data[! is.na(info_data$datetime_first_shared),] 
+unshared_projects <- info_data[is.na(info_data$datetime_first_shared),] 
+
+shared_by_gender <- table(droplevels(shared_projects$gender))
+#shared_by_gender
+unshared_by_gender <- table(droplevels(unshared_projects$gender))
+#unshared_by_gender
+
+shared_projects <- as.vector(shared_by_gender) # Not great re-using the name here.
+non_shared_projects <- as.vector(unshared_by_gender)
+all_projects<- shared_projects + non_shared_projects
+
+prop.test(shared_projects, all_projects)
+
+```
+Test of Proportions: Proportion of Shared Projects out of All Projects Created, by Gender
+
+### Effect of First Project Receiving Loveits on Second Project Sharing
+
+When a new Scratcher creates his or her first project, a decision must be made whether ot not to share the project. Once a project is shared, other Scratchers can view the project and react to it. Possible feedback includes the number of views the project attracts, the number of Loveits the project receives, the number of times the project is identified as a "Favorite", and whether or not the project receives comments. As a first filter for whether a shared project received peer approval, we will look at how Loveits correlate with future project sharing.
+  
+```{r FirstProject, echo=FALSE}
+#table(droplevels(first_project[!is.na(first_project$datetime_first_shared),])$gender)
+#female.first.shared <- first_project[!is.na(first_project$datetime_first_shared),] --try to delete this
+
+first_shared <- first_project[!is.na(first_project$datetime_first_shared) ,]
+
+first_shared_female <- first_shared[first_shared$gender=="female",]
+first_shared_male <- first_shared[first_shared$gender=="male",]
+
+first_shared_with_loves <- first_shared[first_shared$love_count>0,]
+first_shared_with_no_loves <- first_shared[first_shared$love_count==0,]
+
+```
+
+First project shared and given Loveit(s):
+  
+```{r FirstProjectLoveTables, echo=FALSE}
+love.table <- table(droplevels(first_shared_with_loves$gender))
+#love.table
+
+no.love.table <- table(droplevels(first_shared_with_no_loves$gender))
+#no.love.table
+```
+Looking to see whether there is a difference in the proportion of first projects receiving Loveits based on project creator's gender:
+```{r FirstProjectLoveIts, echo=FALSE}
+first_loves <- as.vector(love.table)
+first_no_loves <- as.vector(no.love.table)
+firsts <- first_loves + first_no_loves
+
+loves.table <- as.table(matrix(c(first_loves, first_no_loves), ncol = 2, byrow=TRUE))
+
+colnames(loves.table) <- c("Female", "Male")
+rownames(loves.table) <- c("Got LoveIts","Got NO LoveIts")
+
+kable(loves.table, main = "LoveIts and First Shared Project")
+```
+
+Table 4: LoveIts and First Shared Project
+```{r propTestFirstLoves, echo=FALSE}
+prop.test(first_loves, firsts)
+```
+Test of Proportions: Proportion of First Projects Getting LoveIts by Gender
+
+### Effect on Second Project
+
+Will now use the data on first project sharing to see how receiving Loveits affects whether or not the second project is shared. First, we'll look at proportions of Scratchers sharing a second project after receiving Loveits for their first project, then at those sharing a second project after the first did NOT receive Loveits:
+  
+```{r FirstLoveSecondShare, echo=FALSE}
+# # first projects, got loves, by gender
+# females_first_proj_w_loves <- first_shared_with_loves[first_shared_with_loves$gender == "female",]
+# males_first_proj_w_loves <- first_shared_with_loves[first_shared_with_loves$gender == "male",]
+# 
+# # which second projects were preceded by projects that got loves?
+not_loved_first <- second_project[!(second_project$id %in% first_shared_with_loves$id),]
+loved_first <- second_project[second_project$id %in% first_shared_with_loves$id,]
+# 
+# # Second projects sharing data - first project NOT considered
+second_project_shared <- second_project[!is.na(second_project$datetime_first_shared),]
+second.shared <- as.vector(table(droplevels(second_project_shared$gender)))
+second <- as.vector(table(droplevels(second_project$gender)))
+# second.shared.female <- second_project_shared[second_project_shared$gender=="female",]
+# second.shared.male <- second_project_shared[second_project_shared$gender=="male",]
+# 
+# # Second projects shared, by whether or not first project got loves
+loved_first_second_shared <- second_project_shared[second_project_shared$id %in% first_shared_with_loves$id,]
+not_loved_first_second_shared <- second_project_shared[!second_project_shared$id %in% first_shared_with_loves$id,]
+# 
+# # first projects with loves, by gender
+first.with.love <- table(droplevels(first_shared_with_loves$gender))
+# first.with.love.female <- first_shared_with_loves[first_shared_with_loves$gender=="female",]
+# first.with.love.male <- first_shared_with_loves[first_shared_with_loves$gender=="male",]
+# 
+# # second projects shared after first loved, by gender
+second.shared.after.first.loved <- table(droplevels(loved_first_second_shared$gender))
+# second.shared.after.first.loved.female <- loved_first_second_shared[loved_first_second_shared$gender=="female",]
+# second.shared.after.first.loved.male <- loved_first_second_shared[loved_first_second_shared$gender=="male",]
+# 
+# # first projects WITHOUT loves, by gender
+first.with.no.love <- table(droplevels(first_shared_with_no_loves$gender))
+# first.with.no.love.female <- first_shared_with_no_loves[first_shared_with_no_loves$gender=="female",]
+# first.with.no.love.male <- first_shared_with_no_loves[first_shared_with_no_loves$gender=="male",]
+# 
+# # second projects shared after first NOT loved, by gender
+second.shared.after.first.not.loved <- table(droplevels(not_loved_first_second_shared$gender))
+# second.shared.after.first.not.loved.female <- not_loved_first_second_shared[not_loved_first_second_shared$gender=="female",]
+# second.shared.after.first.not.loved.male <- not_loved_first_second_shared[not_loved_first_second_shared$gender=="male",]
+
+# second project shared - first got LoveIts or not
+second_shared_first_loved <- as.vector(second.shared.after.first.loved)
+first_proj_got_loves <- as.vector(first.with.love)
+
+second_shared_first_not_loved <- as.vector(second.shared.after.first.not.loved)
+first_proj_got_no_loves <- as.vector(first.with.no.love)
+
+total.second.shared <- second_shared_first_loved + second_shared_first_not_loved
+
+# Love1YSecondY <- c(length(second_shared_first_loved), length(second.shared.after.first.loved.female$id), length(second.shared.after.first.loved.male$id))
+# Love1NSecondY <- c(length(second_shared_first_not_loved), length(second.shared.after.first.not.loved.female$id), length(second.shared.after.first.not.loved.male$id))
+first.second.table <- as.table(matrix(c(second_shared_first_loved, second_shared_first_not_loved, total.second.shared, second ), ncol = 2, byrow=TRUE))
+
+colnames(first.second.table) <- c("Female", "Male")
+rownames(first.second.table) <- c("1st Got LoveIts","1st Got NO LoveIts", "Total 2nd Shared Projects", "Total 2nd Projects")
+
+kable(first.second.table)
+```
+
+
+Table 5: Sharing of Second Projects
+```{r }
+prop.test(second_shared_first_loved, first_proj_got_loves)
+prop.test(second_shared_first_not_loved, first_proj_got_no_loves)
+```
+
+Now, we'll look at second project sharing by Scratchers overall:
+
+```{r SecondProjectsSharing, echo=FALSE}
+second_projects <- table(droplevels(second_project$gender))
+#second_projects
+no.first.love <- table(droplevels(first_shared_with_no_loves$gender))
+#no.first.love
+second.shared.no.first.love <- table(droplevels(not_loved_first_second_shared$gender))
+#second.shared.no.first.love
+
+second_projects_shared <- as.vector(second.shared)
+second_projects_all <- as.vector(second_projects)
+
+prop.test(second_projects_shared, second_projects_all)
+```
+
+Now we will look at the proportion of shared second projects by users who got Loveits for their first project -- i.e. out of all second projects that are shared, how many are shared by people who received Loveits on their first projects?
+
+```{r propTestsFirstSecondProjects, echo=FALSE}
+first_loved <- as.vector(table(droplevels(loved_first$gender)))
+not.first_loved <- as.vector(table(droplevels(not_loved_first$gender)))
+
+#first_proj_got_loveits <- as.vector(first_loved)
+#first_proj_got_NO_loveits <- as.vector(not.first_loved)
+
+prop.test(first_loved, second_projects_shared)
+prop.test(second_projects_shared, not.first_loved)
+```
+### HYPOTHESIS 1
+* Projects created by females are just as likely to be shared as projects created by males.
+* logit(p(share-gender))
+
+```{r hyopthesis.1.logistic.regression, echo=FALSE}
+info_data$shared <- !is.na(info_data$datetime_first_shared)
+info_data$female <- info_data$gender == "female"
+
+tmp <- data.frame(prev.projects=unlist(tapply(info_data$id, info_data$id, function (x) {seq(0, length(x)-1)})),
+id=unlist(tapply(info_data$id, info_data$id, function (x) {x})))
+
+tmp2 <- data.frame(running.lovecount=unlist(tapply(info_data$got.love, info_data$id, function (x) {cumsum(x)})),
+id=unlist(tapply(info_data$id, info_data$id, function (x) {x})))
+
+View(tmp2)
+
+# ensure that these are in the same order and then add the column on
+info_data <- info_data[order(info_data$id, info_data$datetime_first_shared),]
+#tmp <- tmp[order(tmp$id, tmp$prev.projects),]
+tmp <- tmp[order(tmp$id, tmp$prev.projects, tmp2$running.lovecount),]
+info_data$prev.projects <- tmp$prev.projects
+summary(glm(shared ~ female + log1p(prev.projects), data=info_data, family=binomial("logit")))
+summary(glm(shared ~ female + log1p(prev.projects) + I(female * log1p(prev.projects)), data=info_data, family=binomial("logit")))
+
+# boy, no projects: 0.2768 = 1/(1+exp(-1*(-.96)))
+# boy, 3 projects: 0.2689414
+# girl, no projects: 0.2423204
+# girl, 3 projects:  0.2516183 
+```
+
+
+
+### HYPOTHESIS 2
+* Projects created by females are just as likely to receive peer recognition as projects created by males.
+* logit(p(love>0-gender))
+
+```{r hyopthesis.2.logistic.regression, echo=FALSE}
+info_data$got.love = info_data$love_count
+info_data$got.love[info_data$got.love>0] <- 1
+summary(glm(got.love ~ gender, data=info_data, family=binomial("logit")))
+summary(glm(got.love ~ gender + log1p(prev.projects), data=info_data, family=binomial("logit")))
+```
+
+
+### HYPOTHESIS 3
+* Scratchers whose shared projects receive no peer recognition are just as likely to share future projects as are Scratchers whose earlier shared projects did receive peer recognition.
+* logit(p(share-recognition)
+
+# Get SUM of previous loveits for projects
+
+```{r hyopthesis.3.logistic.regression, echo=FALSE}
+summary(glm(shared ~ log1p(prev.projects) + got.love, data=info_data, family=binomial("logit")))
+```
+
+
+### HYPOTHESIS 4
+* Female Scratchers whose shared projects receive no peer recognition are just as likely to share future projects as are male Scratchers whose shared projects receive no peer recognition.
+* logit(p(share-recognition-gender)
+```{r hyopthesis.4.logistic.regression, echo=FALSE}
+summary(glm(shared ~ female + log1p(prev.projects) + got.love, data=info_data, family=binomial("logit")))
+
+summary(glm(shared ~ female + log1p(prev.projects) + got.love + female * got.love, data=info_data, family=binomial("logit")))
+```
+
+
+### POSSIBLY SKETCHY? NOT 100% SURE NOT DUPLICATING QUESTIONS HERE:
+
+Want to look further at proportions of first and second projects shared and not shared
+
+```{r}
+first_shared <- first_project[!is.na(first_project$datetime_first_shared),]
+first_not_shared <- first_project[is.na(first_project$datetime_first_shared),]
+first.shared.by.gender <- table(droplevels(first_shared$gender))
+first.shared.by.gender 
+first.not.shared.by.gender <- table(droplevels(first_not_shared$gender))
+
+shared_first <- as.vector(first.shared.by.gender)
+not_shared_first <- as.vector(first.not.shared.by.gender)
+total_first_project <- shared_first + not_shared_first
+
+all_first_projects_by_gender <- table(droplevels(first_project$gender))
+all_first_projects_by_gender 
+
+prop.test(shared_first, total_first_project)
+
+second_shared <- second_project[!is.na(second_project$datetime_first_shared),]
+second_not_shared <- second_project[is.na(second_project$datetime_first_shared),]
+second.shared.by.gender <- table(droplevels(second_shared$gender))
+second.shared.by.gender
+
+second.not.shared.by.gender <- table(droplevels(second_not_shared$gender))
+second.not.shared.by.gender
+
+all_second_projects_by_gender <- table(droplevels(second_project$gender))
+
+second_proj_shared <- as.vector(second.shared.by.gender)
+second_proj <- as.vector(all_second_projects_by_gender)
+
+prop.test(second_proj_shared, second_proj)
+
+first_shared_plus_love <- first_shared[first_shared$love_count>0,]
+first_shared_no_love <- first_shared[first_shared$love_count==0,]
+first.shared.plus.love <- table(droplevels(first_shared_plus_love$gender))
+first.shared.plus.love
+first.shared.no.love <- table(droplevels(first_shared_no_love$gender))
+first.shared.no.love 
+
+shared_p1_loved <- as.vector(first.shared.plus.love)
+shared_p1_no_love <- as.vector(first.shared.no.love)
+
+prop.test(shared_p1_loved, shared_first)
+
+second_shared_after_love <- second_shared[second_shared$id %in% first_shared_plus_love$id,]
+second_shared_after_no_love <- second_shared[second_shared$id %in% first_shared_no_love$id,]
+second.shared.after.love <- table(droplevels(second_shared_after_love$gender))
+second.shared.after.love
+second.shared.after.no.love <- table(droplevels(second_shared_after_no_love$gender))
+second.shared.after.no.love
+
+shared_p2_loved <- as.vector(second.shared.after.love)
+
+prop.test(shared_p2_loved, second_proj_shared)
+
+second_project_shared_no_love = as.vector(second.shared.after.no.love)
+first_project_shared_no_love = as.vector(first.shared.no.love)
+prop.test(second_project_shared_no_love, first_project_shared_no_love)
+
+```
+```{r}
+info_data$shared <- !is.na(info_data$datetime_first_shared)
+info_data$female <- info_data$gender == "female"
+
+tmp <- data.frame(prev.projects=unlist(tapply(info_data$id, info_data$id, function (x) {seq(0, length(x)-1)})),
+id=unlist(tapply(info_data$id, info_data$id, function (x) {x})))
+
+# ensure that these are in the same order and then add the column on
+info_data <- info_data[order(info_data$id, info_data$datetime_first_shared),]
+tmp <- tmp[order(tmp$id, tmp$prev.projects),]
+info_data$prev.projects <- tmp$prev.projects
+```
+
+```{r logisticRegression1, echo=FALSE}
+
+#summary(glm(shared ~ female + log1p(prev.projects), data=info_data, family=binomial("logit")))
+```
+
