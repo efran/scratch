@@ -5,6 +5,7 @@ info_data$gender[info_data$gender=="FEMALE"] <- "female"
 info_data$gender[info_data$gender=="female "] <- "female"
 info_data$gender[info_data$gender=="Male"] <- "male"
 info_data$gender[info_data$gender=="mâle"] <- "male"
+info_data$datetime_first_shared[info_data$datetime_first_shared=="NULL"] <- NA
 
 # Add column for tracking number of previous projects
 tmp <- data.frame(prev.projects=unlist(tapply(info_data$id, info_data$id, function (x) {seq(0, length(x)-1)})),
@@ -20,7 +21,7 @@ tmp2 <- data.frame(running.lovecount=unlist(tapply(info_data$love_count, info_da
 
 info_data <- info_data[order(info_data$id, info_data$datetime_first_shared),]
 tmp <- tmp[order(tmp$id, tmp2$running.lovecount),]
-info_data$running.lovecount <- tmp2$running.lovecount
+info_data$running.lovecount <- tmp$running.lovecount
 
 # Add column to track running loveit count for all previous projects
 info_data$previous.total.love <- info_data$running.lovecount - info_data$love_count
